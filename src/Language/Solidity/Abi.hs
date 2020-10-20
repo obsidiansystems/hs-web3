@@ -20,6 +20,7 @@ module Language.Solidity.Abi
     , Declaration(..)
     , FunctionArg(..)
     , EventArg(..)
+    , StateMutability(..)
 
     -- * Method/Event id encoder
     , signature
@@ -35,9 +36,10 @@ module Language.Solidity.Abi
 import           Control.Monad      (void)
 import           Crypto.Hash        (Digest, Keccak_256, hash)
 import           Data.Aeson         (FromJSON (parseJSON), Options (constructorTagModifier, fieldLabelModifier, sumEncoding),
-                                     SumEncoding (TaggedObject),
+                                     SumEncoding (..),
                                      ToJSON (toJSON), defaultOptions)
 import           Data.Aeson.TH      (deriveJSON)
+import qualified Data.Char          as C (toLower)
 import           Data.Text          (Text)
 import qualified Data.Text          as T (dropEnd, pack, take, unlines, unpack)
 import           Data.Text.Encoding (encodeUtf8)
@@ -78,14 +80,21 @@ $(deriveJSON
     (defaultOptions {fieldLabelModifier = toLowerFirst . drop 6})
     ''EventArg)
 
--- | Elementrary contract interface item
+data StateMutability
+  = SMPure
+  | SMView
+  | SMPayable
+  | SMNonPayable
+  deriving (Eq, Ord, Show)
+
+-- | Elementary contract interface item
 data Declaration = DConstructor
     { conInputs :: [FunctionArg]
     -- ^ Contract constructor
     }
     | DFunction
     { funName     :: Text
-    , funConstant :: Bool
+    , funStateMutability :: StateMutability
     , funInputs   :: [FunctionArg]
     , funOutputs  :: Maybe [FunctionArg]
     -- ^ Method
@@ -136,6 +145,12 @@ $(deriveJSON (defaultOptions {
   , constructorTagModifier = toLowerFirst . drop 1
   , fieldLabelModifier = toLowerFirst . drop 3 })
     ''Declaration)
+
+$(deriveJSON (defaultOptions {
+    sumEncoding = TaggedObject "stateMutability" "contents"
+  , constructorTagModifier = fmap C.toLower . drop 2 })
+    ''StateMutability)
+
 
 -- | Contract Abi is a list of method / event declarations
 newtype ContractAbi = ContractAbi { unAbi :: [Declaration] }
@@ -199,7 +214,7 @@ signature (DEvent name inputs _) = name <> "(" <> args inputs <> ")"
     args :: [EventArg] -> Text
     args = T.dropEnd 1 . foldMap (<> ",") . fmap eveArgType
 
--- | Localy compute Keccak-256 hash of given text
+-- | Locally compute Keccak-256 hash of given text
 sha3 :: Text -> Text
 {-# INLINE sha3 #-}
 sha3 x = T.pack (show digest)

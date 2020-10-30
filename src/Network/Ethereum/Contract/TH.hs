@@ -41,6 +41,7 @@ module Network.Ethereum.Contract.TH
     -- * The contract quasiquoters
       abi
     , abiFrom
+    , quoteAbiDec
     ) where
 
 import           Control.Applicative              ((<|>))

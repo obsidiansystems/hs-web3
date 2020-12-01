@@ -44,7 +44,7 @@ import           Data.Text          (Text)
 import qualified Data.Text          as T (dropEnd, pack, take, unlines, unpack)
 import           Data.Text.Encoding (encodeUtf8)
 import           Text.Parsec        (ParseError, char, choice, digit, eof,
-                                     lookAhead, many1, manyTill, optionMaybe,
+                                     lookAhead, many, many1, manyTill, optionMaybe,
                                      parse, string, try, (<|>))
 import           Text.Parsec.Text   (Parser)
 
@@ -317,9 +317,12 @@ parseSolidityFunctionArgType :: FunctionArg -> Either ParseError SolidityType
 parseSolidityFunctionArgType (FunctionArg _ typ mcmps) = case mcmps of
   Nothing -> parse solidityTypeParser "Solidity" typ
   Just cmps ->
-    SolidityTuple (length cmps)
-    <$>  mapM parseSolidityFunctionArgType cmps
-
+    let base = SolidityTuple (length cmps) <$> mapM parseSolidityFunctionArgType cmps
+    in case parse (string "tuple" *> many (string "[]")) "Solidity" typ of
+      Left err -> Left err
+      Right arr -> go arr
+        where go [] = base
+              go (_:xs) = SolidityArray <$> go xs
 
 parseSolidityEventArgType :: EventArg -> Either ParseError SolidityType
 parseSolidityEventArgType (EventArg _ typ _) = parse solidityTypeParser "Solidity" typ

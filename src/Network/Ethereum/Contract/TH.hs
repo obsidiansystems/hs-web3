@@ -56,7 +56,7 @@ import           Data.Text                        (Text)
 import qualified Data.Text                        as T
 import qualified Data.Text.Lazy                   as LT
 import qualified Data.Text.Lazy.Encoding          as LT
-import           Data.Tuple.OneTuple              (only)
+import           Data.Tuple.OneTuple              (OneTuple(..), only)
 import           Generics.SOP                     (Generic)
 import qualified GHC.Generics                     as GHC (Generic)
 import           Language.Haskell.TH
@@ -122,7 +122,9 @@ toHSType s = case s of
     SolidityString      -> conT ''Text
     SolidityBytesN n    -> appT (conT ''BytesN) (numLit n)
     SolidityBytes       -> conT ''Bytes
-    SolidityTuple n as  -> foldl ( \b a -> appT b $ toHSType a ) ( tupleT n ) as
+    SolidityTuple n as  -> case (n,as) of
+      (1, [x]) -> appT (conT ''OneTuple) (toHSType x)
+      _ -> foldl ( \b a -> appT b $ toHSType a ) ( tupleT n ) as
     SolidityVector ns a -> expandVector ns a
     SolidityArray a     -> appT listT $ toHSType a
   where

@@ -41,7 +41,7 @@ import           Data.Aeson         (FromJSON (parseJSON), Options (constructorT
 import           Data.Aeson.TH      (deriveJSON)
 import qualified Data.Char          as C (toLower)
 import           Data.Text          (Text)
-import qualified Data.Text          as T (dropEnd, pack, take, unlines, unpack)
+import qualified Data.Text          as T (dropEnd, intercalate, pack, take, unlines, unpack)
 import           Data.Text.Encoding (encodeUtf8)
 import           Text.Parsec        (ParseError, char, choice, digit, eof,
                                      lookAhead, many, many1, manyTill, optionMaybe,
@@ -187,28 +187,19 @@ showMethod x = case x of
         ["\t\t" <> methodId x <> " " <> signature x]
     _ -> []
 
+componentsName :: [FunctionArg] -> Text
+componentsName args = "(" <> (T.intercalate "," $ fmap componentName args) <> ")"
+  where
+    componentName :: FunctionArg -> Text
+    componentName x = case funArgComponents x of
+      Nothing   -> funArgType x
+      Just cmps -> componentsName cmps
+
 -- | Take a signature by given decl, e.g. foo(uint,string)
 signature :: Declaration -> Text
-
-signature (DConstructor inputs) = "(" <> args inputs <> ")"
-  where
-    args [] = ""
-    args [x] = funArgType x
-    args (x:xs) = case funArgComponents x of
-      Nothing   -> funArgType x <> "," <> args xs
-      Just cmps -> "(" <> args cmps <> ")," <> args xs
-
+signature (DConstructor inputs) = componentsName inputs
 signature (DFallback _) = "()"
-
-signature (DFunction name _ inputs _) = name <> "(" <> args inputs <> ")"
-  where
-    args :: [FunctionArg] -> Text
-    args [] = ""
-    args [x] = funArgType x
-    args (x:xs) = case funArgComponents x of
-      Nothing   -> funArgType x <> "," <> args xs
-      Just cmps -> "(" <> args cmps <> ")," <> args xs
-
+signature (DFunction name _ inputs _) = name <> componentsName inputs
 signature (DEvent name inputs _) = name <> "(" <> args inputs <> ")"
   where
     args :: [EventArg] -> Text

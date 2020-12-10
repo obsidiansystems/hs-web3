@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
@@ -21,11 +22,10 @@
 -- The user of this library should have no need to use this directly in application code.
 --
 
-module Data.Solidity.Abi.Generic () where
+module Data.Solidity.Abi.Generic where
 
 import qualified Data.ByteString.Lazy   as LBS
 import           Data.Int               (Int64)
-import qualified Data.List              as L
 import           Data.Proxy             (Proxy (..))
 import           Data.Serialize         (Get, Put)
 import           Data.Serialize.Get     (bytesRead, lookAheadE, skip)
@@ -36,69 +36,51 @@ import           Data.Solidity.Abi      (AbiGet (..), AbiPut (..), AbiType (..),
                                          GenericAbiGet (..), GenericAbiPut (..))
 import           Data.Solidity.Prim.Int (getWord256, putWord256)
 
-data EncodedValue = EncodedValue
-    { order    :: Int64
-    , offset   :: Maybe Int64
-    , encoding :: Put
-    }
+data Encoding = Encoding
+  { encoding :: Put
+  , len :: Int64
+  , isDyn :: Bool
+  }
 
-instance Eq EncodedValue where
-  ev1 == ev2 = order ev1 == order ev2
-
-instance Ord EncodedValue where
-  compare ev1 ev2 = order ev1 `compare` order ev2
-
-combineEncodedValues :: [EncodedValue] -> Put
-combineEncodedValues encodings =
-  let sortedEs = adjust headsOffset $ L.sort encodings
-      encodings' = addTailOffsets headsOffset [] sortedEs
-  in let heads = foldl (\acc EncodedValue{..} -> case offset of
-                          Nothing -> acc <> encoding
-                          Just o  -> acc <> putWord256 (fromIntegral o)
-                      ) mempty encodings'
-         tails = foldl (\acc EncodedValue{..} -> case offset of
-                          Nothing -> acc
-                          Just _  -> acc <> encoding
-                      ) mempty encodings'
-      in heads <> tails
+makeEncoding :: forall b. (AbiType b, AbiPut b) => b -> Encoding
+makeEncoding b = Encoding
+  { encoding = p
+  , len = LBS.length (runPutLazy p)
+  , isDyn = isDynamic (Proxy :: Proxy b)
+  }
   where
-    adjust :: Int64 -> [EncodedValue] -> [EncodedValue]
-    adjust n = map (\ev -> ev {offset = (+) n <$> offset ev})
-    addTailOffsets :: Int64 -> [EncodedValue] -> [EncodedValue] -> [EncodedValue]
-    addTailOffsets init' acc es = case es of
-      [] -> reverse acc
-      (e : tail') -> case offset e of
-        Nothing -> addTailOffsets init' (e : acc) tail'
-        Just _  -> addTailOffsets init' (e : acc) (adjust (LBS.length . runPutLazy . encoding $ e) tail')
-    headsOffset :: Int64
-    headsOffset = foldl (\acc e -> case offset e of
-                                Nothing -> acc + (LBS.length . runPutLazy . encoding $ e)
-                                Just _ -> acc + 32
-                            ) 0 encodings
+    p = abiPut b
+
+combineEncodedValues :: [Encoding] -> Put
+combineEncodedValues encodings = putHeads tailsStart [] encodings
+  where
+    tailsStart :: Int64
+    tailsStart = sum $ flip fmap encodings $ \e ->
+      if isDyn e
+      then 32
+      else len e
+
+    putHeads tailOffset tails = \case
+      [] -> sequence_ $ reverse tails
+      (x:xs) -> case isDyn x of
+        False -> do
+          encoding x
+          putHeads tailOffset tails xs
+        True ->  do
+          putWord256 (fromIntegral tailOffset)
+          putHeads (tailOffset + len x) (encoding x : tails) xs
 
 class AbiData a where
-    _serialize :: [EncodedValue] -> a -> [EncodedValue]
+    _serialize :: a -> [Encoding]
 
 instance AbiData (NP f '[]) where
-    _serialize encoded _ = encoded
+    _serialize Nil = []
 
 instance (AbiType b, AbiPut b, AbiData (NP I as)) => AbiData (NP I (b :as)) where
-    _serialize encoded (I b :* a) =
-        if isDynamic (Proxy :: Proxy b)
-        then _serialize (dynEncoding  : encoded) a
-        else _serialize (staticEncoding : encoded) a
-      where
-        staticEncoding = EncodedValue { encoding = abiPut b
-                                      , offset = Nothing
-                                      , order = 1 + (fromInteger . toInteger . L.length $ encoded)
-                                      }
-        dynEncoding = EncodedValue { encoding = abiPut b
-                                   , offset = Just 0
-                                   , order = 1 + (fromInteger . toInteger . L.length $ encoded)
-                                   }
+    _serialize (I b :* a) = makeEncoding b : _serialize a
 
 instance AbiData (NP f as) => GenericAbiPut (SOP f '[as]) where
-    gAbiPut (SOP (Z a)) = combineEncodedValues $ _serialize [] a
+    gAbiPut (SOP (Z a)) = combineEncodedValues $ _serialize a
     gAbiPut _           = error "Impossible branch"
 
 instance GenericAbiGet (NP f '[]) where
@@ -120,3 +102,21 @@ factorParser
             skip (dataOffset - currentOffset)
             Left <$> abiGet
         return x
+
+{-
+factorParser' :: forall a. AbiGet a => Int -> Get [a]
+factorParser' = go [] True
+  where
+    getHeads = do
+
+
+    go isHead
+      | not isHead || not (isDynamic (Proxy :: Proxy a)) = abiGet
+      | otherwise = do
+          dataOffset <- fromIntegral <$> getWord256
+          currentOffset <- bytesRead
+          Left x <- lookAheadE $ do
+            skip (dataOffset - currentOffset)
+            Left <$> go False
+          return x
+-}

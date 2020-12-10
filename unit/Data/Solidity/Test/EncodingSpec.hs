@@ -9,6 +9,8 @@ module Data.Solidity.Test.EncodingSpec where
 import           Control.Exception          (evaluate)
 import           Data.Monoid                ((<>))
 import           Data.Text                  (Text)
+import qualified Data.Text                  as T
+import qualified Data.Text.Encoding         as T
 import           Data.Tuple.OneTuple        (OneTuple (..))
 import           Generics.SOP               (Generic, Rep)
 import           Test.Hspec
@@ -19,6 +21,9 @@ import           Data.Solidity.Abi.Codec    (decode, decode', encode, encode')
 import           Data.Solidity.Prim         (Address, Bytes, BytesN, IntN,
                                              ListN, UIntN)
 import           Data.Solidity.Prim.Address (fromHexString, toHexString)
+
+import Data.ByteArray
+import Data.ByteArray.HexString
 
 spec :: Spec
 spec = do
@@ -137,6 +142,107 @@ dynamicArraysTest = do
                     <> "0x0000000000000000000000000000000000000000000000000000000000000001"
                     <> "0x0000000000000000000000000000000000000000000000000000000000000000"
           in roundTrip decoded encoded
+      it "can encode dynamically sized lists of bytes" $ do
+        let decoded = ["0x12345678"] :: [Bytes]
+        roundTrip' decoded
+
+staticTest :: Spec
+staticTest = do
+  describe "yo" $ do
+    {-
+    it "yeah" $ do
+      let decoded :: (UIntN 256, [UIntN 32], BytesN 10, Bytes)
+          decoded = (0x123, [0x456, 0x789], "1234567890", "Hello, world!")
+          encoded = mconcat
+            [ "0x0000000000000000000000000000000000000000000000000000000000000123"
+            , "0x0000000000000000000000000000000000000000000000000000000000000080"
+            , "0x3132333435363738393000000000000000000000000000000000000000000000"
+            , "0x00000000000000000000000000000000000000000000000000000000000000e0"
+            , "0x0000000000000000000000000000000000000000000000000000000000000002"
+            , "0x0000000000000000000000000000000000000000000000000000000000000456"
+            , "0x0000000000000000000000000000000000000000000000000000000000000789"
+            , "0x000000000000000000000000000000000000000000000000000000000000000d"
+            , "0x48656c6c6f2c20776f726c642100000000000000000000000000000000000000"
+            ]
+      roundTrip decoded encoded
+      -}
+
+    let decoded :: ([[UIntN 256]], [Text])
+        decoded = ([[7, 8], [9]], ["one", "two", "three"])
+
+        encoded :: Bytes
+        encoded = mconcat
+          [ "0x0000000000000000000000000000000000000000000000000000000000000040" -- offset of [[1, 2], [3]]
+          , "0x0000000000000000000000000000000000000000000000000000000000000140" -- offset of ["one", "two", "three"]
+          , "0x0000000000000000000000000000000000000000000000000000000000000002" -- count for [[1, 2], [3]]
+          , "0x0000000000000000000000000000000000000000000000000000000000000040" -- offset of [1, 2]
+          , "0x00000000000000000000000000000000000000000000000000000000000000a0" -- offset of [3]
+          , "0x0000000000000000000000000000000000000000000000000000000000000002" -- count for [1, 2]
+          , "0x0000000000000000000000000000000000000000000000000000000000000007" -- encoding of 1
+          , "0x0000000000000000000000000000000000000000000000000000000000000008" -- encoding of 2
+          , "0x0000000000000000000000000000000000000000000000000000000000000001" -- count for [3]
+          , "0x0000000000000000000000000000000000000000000000000000000000000009" -- encoding of 3
+          , "0x0000000000000000000000000000000000000000000000000000000000000003" -- count for ["one", "two", "three"]
+          , "0x0000000000000000000000000000000000000000000000000000000000000060" -- offset for "one"
+          , "0x00000000000000000000000000000000000000000000000000000000000000a0" -- offset for "two"
+          , "0x00000000000000000000000000000000000000000000000000000000000000e0" -- offset for "three"
+          , "0x0000000000000000000000000000000000000000000000000000000000000003" -- count for "one"
+          , "0x6f6e650000000000000000000000000000000000000000000000000000000000" -- encoding of "one"
+          , "0x0000000000000000000000000000000000000000000000000000000000000003" -- count for "two"
+          , "0x74776f0000000000000000000000000000000000000000000000000000000000" -- encoding of "two"
+          , "0x0000000000000000000000000000000000000000000000000000000000000005" -- count for "three"
+          , "0x7468726565000000000000000000000000000000000000000000000000000000" -- encoding of "three"
+          ]
+
+--    it "hex" $ do
+--      roundTrip decoded encoded
+    it "yo" $ do
+      hex (encode decoded) `shouldBe` hex encoded
+
+    let nested :: [[Text]]
+        nested = [["a", "bc"], ["def"]]
+
+        nestedEncoded :: Bytes
+        nestedEncoded = mconcat
+          [ "0x0000000000000000000000000000000000000000000000000000000000000002"
+          , "0x0000000000000000000000000000000000000000000000000000000000000040"
+          , "0x0000000000000000000000000000000000000000000000000000000000000120"
+          , "0x0000000000000000000000000000000000000000000000000000000000000002"
+          , "0x0000000000000000000000000000000000000000000000000000000000000040"
+          , "0x0000000000000000000000000000000000000000000000000000000000000080"
+          , "0x0000000000000000000000000000000000000000000000000000000000000001"
+          , "0x6100000000000000000000000000000000000000000000000000000000000000"
+          , "0x0000000000000000000000000000000000000000000000000000000000000002"
+          , "0x6263000000000000000000000000000000000000000000000000000000000000"
+          , "0x0000000000000000000000000000000000000000000000000000000000000001"
+          , "0x0000000000000000000000000000000000000000000000000000000000000020"
+          , "0x0000000000000000000000000000000000000000000000000000000000000003"
+          , "0x6465660000000000000000000000000000000000000000000000000000000000"
+          ]
+
+    it "hey" $ do
+      hex (encode nested) `shouldBe` hex nestedEncoded
+      roundTrip nested nestedEncoded
+
+
+lol :: ([[UIntN 256]], [Text])
+lol = ([[1, 2], [3]], ["one", "two", "three"])
+
+wtf :: Bytes
+wtf = encode lol
+
+test a = hspec $ it "lol" $ roundTrip' a
+
+roundTrip' :: ( Show a
+              , Eq a
+              , AbiPut a
+              , AbiGet a
+              )
+           => a
+           -> IO ()
+roundTrip' decoded = do
+  let encoded = encode decoded :: Bytes
+  decode (encoded <> encoded) `shouldBe` Right decoded
 
 tuplesTest :: Spec
 tuplesTest =
@@ -236,7 +342,7 @@ addressTest =
       fromHexString "0x4af013AfBAdb22D8A88c92D68Fc96B033b9Ebb8a00"
         `shouldBe` Left "Incorrect address length: 21"
 
--- | Run encoded/decoded comaration
+-- | Run encoded/decoded comparation
 roundTrip :: ( Show a
              , Eq a
              , AbiPut a
@@ -249,7 +355,10 @@ roundTrip decoded encoded = do
   encoded `shouldBe` encode decoded
   decode encoded `shouldBe` Right decoded
 
--- | Run generic encoded/decoded comaration
+hex :: Bytes -> [Text]
+hex = T.chunksOf 64 . T.drop 2 . toText . HexString . convert
+
+-- | Run generic encoded/decoded comparation
 roundTripGeneric :: ( Show a
                     , Eq a
                     , Generic a

@@ -7,10 +7,8 @@
 module Data.Solidity.Test.EncodingSpec where
 
 import           Control.Exception          (evaluate)
-import           Data.Monoid                ((<>))
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
-import qualified Data.Text.Encoding         as T
 import           Data.Tuple.OneTuple        (OneTuple (..))
 import           Generics.SOP               (Generic, Rep)
 import           Test.Hspec
@@ -18,7 +16,7 @@ import           Test.Hspec
 import           Data.Solidity.Abi          (AbiGet, AbiPut, GenericAbiGet,
                                              GenericAbiPut)
 import           Data.Solidity.Abi.Codec    (decode, decode', encode, encode')
-import           Data.Solidity.Prim         (Address, Bytes, BytesN, IntN,
+import           Data.Solidity.Prim         (Address, BytesN, IntN,
                                              ListN, UIntN)
 import           Data.Solidity.Prim.Address (fromHexString, toHexString)
 
@@ -231,6 +229,7 @@ lol = ([[1, 2], [3]], ["one", "two", "three"])
 wtf :: Bytes
 wtf = encode lol
 
+test :: (Show a, Eq a, AbiPut a, AbiGet a) => a -> IO ()
 test a = hspec $ it "lol" $ roundTrip' a
 
 roundTrip' :: ( Show a

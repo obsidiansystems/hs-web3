@@ -42,7 +42,7 @@ import           Data.Aeson         (FromJSON (parseJSON), Options (constructorT
 import           Data.Aeson.TH      (deriveJSON)
 import qualified Data.Char          as C (toLower)
 import           Data.Text          (Text)
-import qualified Data.Text          as T (dropEnd, intercalate, pack, take, unlines, unpack)
+import qualified Data.Text          as T (concat, dropEnd, intercalate, pack, take, unlines, unpack)
 import           Data.Text.Encoding (encodeUtf8)
 import           Text.Parsec        (ParseError, char, choice, digit, eof,
                                      lookAhead, many, many1, manyTill, optionMaybe,
@@ -189,12 +189,26 @@ showMethod x = case x of
     _ -> []
 
 componentsName :: [FunctionArg] -> Text
-componentsName args = "(" <> (T.intercalate "," $ fmap componentName args) <> ")"
+componentsName args = tupleUp $ fmap componentName args
   where
+    tupleUp xs = "(" <> (T.intercalate "," xs) <> ")"
     componentName :: FunctionArg -> Text
-    componentName x = case funArgComponents x of
-      Nothing   -> funArgType x
-      Just cmps -> componentsName cmps
+    componentName x = case parseSolidityFunctionArgType x of
+      Left err -> error $ show err
+      Right parsedType -> go parsedType
+      where
+        go = \case
+          SolidityAddress -> "address"
+          SolidityBool -> "bool"
+          SolidityBytes -> "bytes"
+          SolidityBytesN n -> "bytes" <> T.pack (show n)
+          SolidityInt n -> "int" <> T.pack (show n)
+          SolidityUint n -> "uint" <> T.pack (show n)
+          SolidityString -> "string"
+          SolidityTuple _ cmps -> tupleUp $ fmap go cmps
+          SolidityArray t -> go t <> "[]"
+          SolidityVector dims t -> go t <> T.concat (flip fmap dims $ \d -> "[" <> T.pack (show d) <> "]")
+
 
 -- | Take a signature by given decl, e.g. foo(uint,string)
 signature :: Declaration -> Text
